@@ -229,6 +229,33 @@ func TestCollectorStartInvalidConfig(t *testing.T) {
 	assert.Error(t, col.Run(context.Background()))
 }
 
+func TestCollectorReloadInvalidConfigChange(t *testing.T) {
+	factories, err := nopFactories()
+	require.NoError(t, err)
+
+	provider, err := NewConfigProvider(newDefaultConfigProviderSettings([]string{filepath.Join("testdata", "otelcol-nop.yaml")}))
+	require.NoError(t, err)
+
+	col, err := NewCollector(CollectorSettings{
+		BuildInfo:      component.NewDefaultBuildInfo(),
+		Factories:      factories,
+		ConfigProvider: &mockCfgProvider{ConfigProvider: provider},
+	})
+	require.NoError(t, err)
+
+	startCollector(context.Background(), t, col)
+
+	assert.Eventually(t, func() bool {
+		return StateRunning == col.GetState()
+	}, 2*time.Second, 200*time.Millisecond)
+
+	col.set.ConfigProvider, err = NewConfigProvider(newDefaultConfigProviderSettings([]string{filepath.Join("testdata", "otelcol-invalid.yaml")}))
+
+	err = col.reloadConfiguration(context.Background())
+	assert.ErrorContains(t, err, "invalid configuration")
+	assert.Equal(t, StateStarting, col.GetState())
+}
+
 func TestCollectorStartWithTraceContextPropagation(t *testing.T) {
 	tests := []struct {
 		file        string
